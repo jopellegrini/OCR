@@ -23,8 +23,9 @@ int main(int argc, char **argv){
 		exit(EXIT_FAILURE);
 	}
 
-	window = SDL_CreateWindow("Display picture test", 
-							SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, 0);
+	window = SDL_CreateWindow("Display picture test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, 0);
+
+
 	if(window == NULL){
 
 		SDL_Log("error > %s\n", SDL_GetError());
@@ -75,16 +76,29 @@ int main(int argc, char **argv){
 		clean_ressources(window, renderer, texture);
 		exit(EXIT_FAILURE);
 	} 
-		
-	SDL_RenderPresent(renderer);	
+
+	SDL_RenderPresent(renderer);
 
 
-	SDL_Delay(5000);
+
+
+	SDL_Event e;
+
+	while (1){
+		if (SDL_PollEvent(&e))
+		{
+			if (SDL_QUIT == e.type)
+			{
+				break;
+			}
+		}
+	}
+	clean_ressources(window, renderer, texture);
 
 	SDL_Quit();
 	
-	clean_ressources(window, renderer, texture);
 	return EXIT_SUCCESS;
+
 
 }
 
