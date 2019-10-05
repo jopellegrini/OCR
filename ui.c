@@ -24,9 +24,6 @@ void initWindow(){
 	SDL_Texture *texture = NULL;
 	SDL_Rect dest_rect = {0, 0, 640, 480};
 
-	SDL_Texture *img = NULL;
-
-	int w,h;
 
 	if(SDL_Init(SDL_INIT_VIDEO) != 0){
 
@@ -92,13 +89,41 @@ void initWindow(){
 		exit(EXIT_FAILURE);
 	}*/
 
-    SDL_SetRenderDrawColor(renderer, 255, 249, 242, 255);
+	SDL_SetRenderDrawColor(renderer, 255, 249, 242, 255);
 
-    SDL_RenderClear(renderer);
+	SDL_RenderClear(renderer);
 
 
 	SDL_RenderPresent(renderer);
 
+
+	SDL_Texture *bitmapTex = NULL, *bitmapManTex;
+	SDL_Surface *bitmapSuface = NULL, *bitmapManSurface;
+
+	bitmapSuface = SDL_LoadBMP("sdl_button.bmp");
+	bitmapManTex = SDL_CreateTextureFromSurface(renderer, bitmapSuface);
+	SDL_FreeSurface(bitmapSuface);
+
+	
+	SDL_Rect srcrect;
+	SDL_Rect dstrect;
+
+	srcrect.x = 0;
+	srcrect.y = 0;
+	srcrect.w = 2000;
+	srcrect.h = 400;
+
+	dstrect.x = 635;
+	dstrect.y = 400;
+	dstrect.w = 200;
+	dstrect.h = 50;
+
+
+		SDL_RenderClear(renderer);		
+		SDL_RenderCopy(renderer, bitmapTex, NULL, NULL);
+		SDL_RenderCopy( renderer, bitmapManTex, &srcrect, &dstrect );
+		SDL_RenderPresent(renderer);
+	
 	SDL_Event e;
 
 	while (1){
@@ -109,6 +134,9 @@ void initWindow(){
 				break;
 			}
 		}
+
+
+
 	}
 	clean_ressources(window, renderer, texture);
 
