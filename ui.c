@@ -3,6 +3,8 @@
 #include <stdio.h>
 
 
+
+
 void clean_ressources(SDL_Window *w, SDL_Renderer *r, SDL_Texture *t){
 
 	if(t != NULL)
@@ -52,42 +54,9 @@ void initWindow(){
 
 	}
 
-
-
-
-	/* picture = SDL_LoadBMP("test_picture_bitmap.bmp");
-	if(picture == NULL){
-
-		SDL_Log("error > %s\n", SDL_GetError());
-		clean_ressources(window, renderer, NULL);
-		exit(EXIT_FAILURE);
-
-	}
-
-	texture = SDL_CreateTextureFromSurface(renderer, picture);
-	SDL_FreeSurface(picture);
-
-	if(texture == NULL){
-
-		SDL_Log("error > %s\n", SDL_GetError());
-		clean_ressources(window, renderer, NULL);
-		exit(EXIT_FAILURE);
-
-	}
-
-	if(SDL_QueryTexture(texture, NULL, NULL, &dest_rect.w, &dest_rect.h) != 0){
-
-		SDL_Log("error > %s\n", SDL_GetError());
-		clean_ressources(window, renderer, texture);
-		exit(EXIT_FAILURE);
-	} 
-
-	if(SDL_RenderCopy(renderer, texture, NULL, &dest_rect) != 0){
-		
-		SDL_Log("error > %s\n", SDL_GetError());
-		clean_ressources(window, renderer, texture);
-		exit(EXIT_FAILURE);
-	}*/
+	int windowWidth = SDL_GetWindowSurface(window)->w,
+		windowHeight = SDL_GetWindowSurface(window)->h;
+	
 
 	SDL_SetRenderDrawColor(renderer, 255, 249, 242, 255);
 
@@ -113,8 +82,8 @@ void initWindow(){
 	srcrect.w = 2000;
 	srcrect.h = 400;
 
-	dstrect.x = 635;
-	dstrect.y = 400;
+	dstrect.x = windowWidth/2-90;
+	dstrect.y = windowHeight/2-25;
 	dstrect.w = 200;
 	dstrect.h = 50;
 
