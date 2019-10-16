@@ -3,6 +3,8 @@
 #include <string.h>
 #include "network.h"
 
+// Documentation: http://neuralnetworksanddeeplearning.com/
+
 // Building ------------------------------------------------------------------------------------------------------------
 
 /** Creates a new network with random weights and biaises
@@ -59,7 +61,7 @@ Network* newNetwork(int* layerLengths, int nbLayers) {
 
 // Simulation ----------------------------------------------------------------------------------------------------------
 
-/** Calculates the answer of the network over a specific input array
+/** Calculates the answer of the network over a specific input array (feed forward)
  * <br> The returned array is the array of the outputs of the neurons of the output layer
  * <br> The length of the input array must be equal to getInputNumber(network) */
 float* getNetworkAnswer(Network* network, float* inputs) {
@@ -112,32 +114,201 @@ float* cost(Network* network, int nbExamples, float** inputs, float** labels) {
     }
 
     for(int i = 0; i < nbOutputs; i++)
-        costs[i] /= (float)nbExamples;
+        costs[i] /= (float)nbExamples*2; //The *2 here makes the cost derivative simpler
 
     return costs;
 }
 
+/** Updates the weights and biaises to improve answers to given examples
+ * <br> eta is the learning rate (bigger = less precise, lower = slower). in [0,1]
+ * <br> Uses the backpropagation algorithm to calculate the gradient of the cost of each example
+ * and then modifies each weight and biais proportionaly to the average of these gradients */
+void learn(Network* network, float eta, TrainingExample** examples, int nbExamples) {
+
+    int totalNeurons = getTotalNeurons(network);
+
+    //Cost gradient for each weight (output of the backpropagation).
+    //deltaW[i][j] is the adjustment to make on the jth weight of the ith neuron
+    float** deltaW = malloc(sizeof(float*)*totalNeurons);
+    for(int i = 0; i < totalNeurons; i++)
+        deltaW[i] = malloc(sizeof(float)*(network->neurons[i]->nbWeights));
+    //Cost gradient for each biais (output of the backpropagation).
+    //deltaB[i] is the adjustment to make on the biais of the ith neuron
+    float* deltaB = malloc(sizeof(float)*totalNeurons);
+
+    //Initialises all the deltas to 0
+    for(int i = 0; i < totalNeurons; i++) {
+        for(int j = 0; j < network->neurons[i]->nbWeights; j++)
+            deltaW[i][j] = 0;
+        deltaB[i] = 0;
+    }
+
+    //Calculates the cost gradient for each example and sums all the adjustments to make (to do it only once)
+    for(int exampleIndex = 0; exampleIndex < nbExamples; exampleIndex++) {
+
+        //Calculates the gradient of the cost for this example
+        float** exampleDeltaW = malloc(sizeof(float*)*totalNeurons); //Same as deltaW but for this example only
+        for(int i = 0; i < totalNeurons; i++)
+            exampleDeltaW[i] = malloc(sizeof(float)*(network->neurons[i]->nbWeights));
+        float* exampleDeltaB = malloc(sizeof(float)*totalNeurons);   //Same as deltaB but for this example only
+        //The output of this function are exampleDeltaW and exampleDeltaB
+        getCostGradient(network, examples[exampleIndex], exampleDeltaW, exampleDeltaB);
+
+        //Adds the values of the gradient of the cost for this example to deltaW and deltaB
+        for(int i = 0; i < totalNeurons; i++) {
+            deltaB[i] += exampleDeltaB[i];
+            int nbWeights = network->neurons[i]->nbWeights;
+            for(int j = 0; j < nbWeights; j++)
+                deltaW[i][j] += exampleDeltaW[i][j];
+        }
+
+        //Frees the memory for the current example
+        for(int i = 0; i < totalNeurons; i++)
+            free(exampleDeltaW[i]);
+        free(exampleDeltaB);
+        free(exampleDeltaW);
+    }
+
+    //All the values of the gradient will be scaled by this (negative to descend the gradient)
+    //nbExample to make the average instead of the sum of all the costs)
+    //eta is the learning rate (bigger = less precise, lower = slower)
+    float scale = -eta/(float)nbExamples;
+
+    //Each weight/biais gets added -eta/nbExamples * correspondingDelta
+    for(int i = 0; i < totalNeurons; i++) {
+        Neuron* neuron = network->neurons[i];
+        for(int j = 0; j < neuron->nbWeights; j++)
+            neuron->weights[j] += scale * deltaW[i][j];
+        neuron->biais += scale * deltaB[i];
+    }
+
+    //Frees the memory used for the gradient
+    for(int i = 0; i < totalNeurons; i++)
+        free(deltaW[i]);
+    free(deltaB);
+    free(deltaW);
+}
+
+/** Returns the gradient of the cost (Backpropagation algorithm).
+ * The outputs are in deltaW and deltaB (Any value in these array will be erased) */
+void getCostGradient(Network* network, TrainingExample* example, float** deltaW, float* deltaB) {
+
+    //1st step: get the activation values before and after the activation for all the neurons
+
+    //Does a first feed forward to update the lastA and lastZ values stored in the neurons
+    //lastA is the last output of the neuron and the last output before application of the activation function
+    free(getNetworkAnswer(network, example->inputs));
+
+    //2nd step: get the deltas (error) for the last layer
+
+    int outputNumber = getOutputNumber(network);
+    int firstOutputIndex = network->firstNeuronIndices[network->nbLayers-1];
+    float* deltas = malloc(sizeof(float)* outputNumber);
+
+    //Calculates the delta for the last layer. For each neuron: delta = C' * o'(zi).
+    //o' is the derivative of activation function, zi is the activation of the neuron before the activation function
+    //C' is the derivative of the cost: ai - yi (ai is the activation of the neuron, yi is the label for this neuron)
+    for(int i = 0; i < outputNumber; i++) {
+        Neuron* neuron = network->neurons[firstOutputIndex+i];
+        deltas[i] = (neuron->lastA - example->label[i]) * activation_prime(neuron->lastZ);
+    }
+
+    //Does the 4th step now for this layer so we don't have to store all the deltas
+    //Calculation of the gradient for the output layer
+    int outputLayerIndex = network->nbLayers-1;
+    int previousLayerLength = network->layerLengths[outputLayerIndex-1];
+    for(int neuronIndex = 0; neuronIndex < outputNumber; neuronIndex++) {
+        deltaB[firstOutputIndex + neuronIndex] = deltas[neuronIndex];
+        for (int weightIndex = 0; weightIndex < previousLayerLength; weightIndex++)
+            deltaW[firstOutputIndex + neuronIndex][weightIndex] = deltas[neuronIndex]
+                    * network->neurons[network->firstNeuronIndices[outputLayerIndex-1] + weightIndex]->lastA;
+    }
+
+    //3rd step: get the deltas (error) for the all the hidden layers
+
+    //Calculates the deltas for each hidden layer (starts at the one before the output layer and ends at the one
+    //before the input layer). The calculation is explained below
+    for(int layerIndex = network->nbLayers-2; layerIndex >= 1; layerIndex--) {
+
+        //Stores the deltas calculated one step before, so the deltas of the next layer
+        float* nextLayerDeltas = deltas;
+
+        //Some useful values
+        int layerLength = network->layerLengths[layerIndex];
+        int nextLayerLength = network->layerLengths[layerIndex+1];
+        int nextLayerFirstNeuronIndex = network->firstNeuronIndices[layerIndex+1];
+        int firstNeuronIndex = network->firstNeuronIndices[layerIndex];
+        //Allocates memory for the deltas of the current layer
+        deltas = malloc(sizeof(float)*layerLength);
+
+        //For each neuron of the current layer
+        for(int neuronIndex = 0; neuronIndex < layerLength; neuronIndex++) {
+
+            //The delta for each neuron is the sum of a value calculated for each neuron of the next layer
+            //multiplied by the activation of the neuron before application of the activation function
+            float sum = 0;
+            //For each neuron of the next layer
+            for(int nextLayerNeuronIndex = 0; nextLayerNeuronIndex < nextLayerLength; nextLayerNeuronIndex++) {
+                //The value added to the sum is: w*d
+                //Let "this neuron" refer to the neuron nextLayerNeuronIndex (so it's in the next layer)
+                //w: The weight of the neuron neuronIndex (the value multiplied by the neuron neuronIndex's activation
+                //during this neuron's simulation during feed forward).
+                //d: The delta of this neuron
+                sum += network->neurons[nextLayerFirstNeuronIndex + nextLayerNeuronIndex]->weights[neuronIndex]
+                        * nextLayerDeltas[nextLayerNeuronIndex];
+            }
+            //Multiplication by o'(z)
+            deltas[neuronIndex] = sum * activation_prime(network->neurons[neuronIndex + firstNeuronIndex]->lastZ);
+        }
+
+        // 4th step: Calculate the gradient
+
+        //Inside the 3rd step loop so we can free the delta arrays
+        previousLayerLength = network->layerLengths[layerIndex-1];
+        for(int neuronIndex = 0; neuronIndex < layerLength; neuronIndex++) {
+            //delta refers to the delta of the corresponding neuron
+            //The biais components are given by: dC/db = delta
+            deltaB[network->firstNeuronIndices[layerIndex] + neuronIndex] = deltas[neuronIndex];
+            //The weights are given by dC/dw_k = a_(l-1)_k * delta
+            for(int weightIndex = 0; weightIndex < previousLayerLength; weightIndex++)
+                deltaW[network->firstNeuronIndices[layerIndex] + neuronIndex][weightIndex] = deltas[neuronIndex]
+                        * (layerIndex > 1 //If the layer is the one after the inputs, the activations are in the example
+                            ? network->neurons[network->firstNeuronIndices[layerIndex-1] + weightIndex]->lastA
+                            : example->inputs[weightIndex]);
+        }
+
+        free(nextLayerDeltas);
+    }
+
+    free(deltas);
+}
+
 // Serialization/Parsing -----------------------------------------------------------------------------------------------
 
+//Serialized networks are of this form:
+// 
+// nbLayers nbInputs (nbNeuronsHiddenLayer)* nbOutputs
+// (nbWeights biais (weight)+)+   //For each neuron
+
 //Adds an int to the buffer and returns a pointer to the first char after the added int and the end character.
-char* addint(char* buffer, int i, char end) {
+char* writeint(char* buffer, int i, char end) {
     int size = sprintf(buffer, "%i", i);
     buffer[size] = end;
     return &buffer[size+1];
 }
 
 //Adds an float to the buffer and returns a pointer to the first char after the added float and the end character
-char* addfloat(char* buffer, float f, char end) {
+char* writefloat(char* buffer, float f, char end) {
     int size = sprintf(buffer, "%f", f);
     buffer[size] = end;
     return &buffer[size+1];
 }
 
-char* serialize(Network* network) {
+char* serializeNetwork(Network* network) {
 
     //Allocates the memory needed to store the string (it will then be copied to another string with the exact space)
     //A float as a string is at most 13 characters long (x.xxxxxxe-xxx). Integer values are considered 3 digits long.
-    //Each neuron will be serialized with its number of weights, his biais and his weights, separated by spaces.
+    //Each neuron will be serialized with its number of weights, its biais and its weights, separated by spaces.
     //Neurons are separated by line breaks. The first line wich contains the number of layers followed by the number of
     //neurons for each layer. Each neuron is (weights+1)*14 + 4 characters long.
     int totalWeights = 0;
@@ -150,20 +321,20 @@ char* serialize(Network* network) {
     char* current = res;
 
     //Adds the number of layers
-    current = addint(current, (*network).nbLayers, ' ');
+    current = writeint(current, (*network).nbLayers, ' ');
     //Adds the number of neurons in each layer
-    for(int i = 1; i < (*network).nbLayers; i++)
-        current = addint(current, (*network).layerLengths[i], ' ');
+    for(int i = 0; i < (*network).nbLayers; i++)
+        current = writeint(current, (*network).layerLengths[i], ' ');
     //Replaces the last space by a line break
     current[-1] = '\n';
 
     //Writes each neuron
     for(int i = 0; i < totalNeurons; i++) {
         Neuron* neuron = (*network).neurons[i];
-        current = addint(current, (*neuron).nbWeights, ' ');
-        current = addfloat(current, (*neuron).biais, ' ');
+        current = writeint(current, (*neuron).nbWeights, ' ');
+        current = writefloat(current, (*neuron).biais, ' ');
         for(int j = 0; j < (*neuron).nbWeights; j++)
-            current = addfloat(current, (*neuron).weights[j], ' ');
+            current = writefloat(current, (*neuron).weights[j], ' ');
         //Replaces the last space by a line break
         current[-1] = '\n';
     }
@@ -172,7 +343,7 @@ char* serialize(Network* network) {
     current[0] = '\0';
 
     //Copies the result in a string with exactly the right length
-    unsigned long length = strlen(res);
+    unsigned long length = strlen(res)+1; //+1 to include the null terminator
     char* resized = malloc(sizeof(char)*length);
     for(unsigned long i = 0; i < length; i++)
         resized[i] = res[i];
@@ -181,14 +352,93 @@ char* serialize(Network* network) {
     return resized;
 }
 
+//Reads an int from the str and returns it
+//str gets automaticaly moved to the end of the str +1 char
+//ex: "12 78" -> "78"
+int readint(char** str) {
+
+    char* s = *str;
+
+    //Puts a null terminator at the end so the atoi function works
+    int separatorPos = 0;
+    while(s[separatorPos] != 0 && s[separatorPos] != ' ' && s[separatorPos] != '\n')
+        separatorPos++;
+    char separator = s[separatorPos];
+    s[separatorPos] = '\0';
+    
+    int res = atoi(s);
+    
+    //Puts back the separator and moves the str pointer
+    s[separatorPos] = separator;
+    *str = s+separatorPos+1;
+
+    return res;
+}
+
+//Reads an float from the str and returns it
+//str gets automaticaly moved to the end of the str +1 char
+//ex: "12.0 78.0" -> "78.0"
+float readfloat(char** str) {
+        
+    char* s = *str;
+
+    //Puts a null terminator at the end so the atoi function works
+    int separatorPos = 0;
+    while(s[separatorPos] != 0 && s[separatorPos] != ' ' && s[separatorPos] != '\n')
+        separatorPos++;
+    char separator = s[separatorPos];
+    s[separatorPos] = '\0';
+    
+    float res = strtof(s, NULL);
+    
+    //Puts back the separator and moves the str pointer
+    s[separatorPos] = separator;
+    *str = s+separatorPos+1;
+
+    return res;
+}
+
+Network* parseNetwork(char* data) {
+    
+    //Avoids the data variable being altered
+    char* stream = data;
+
+    //Reads the first line (number of layers and length of the layers)
+    int nbLayers = readint(&stream);
+    int* layerLengths = malloc(nbLayers);
+    for(int i = 0; i < nbLayers; i++)
+        layerLengths[i] = readint(&stream);
+    
+    //Creates the network now that the size is known
+    Network* network = newNetwork(layerLengths, nbLayers);
+    free(layerLengths); //The newNetwork function copies the layerLengths so this array is useless
+
+    //Reads all the neurons
+    int neuronIndex = 0;
+    while(stream[0] != 0) {
+        
+        int nbWeights = readint(&stream);
+        float* weights = malloc(sizeof(float)*nbWeights);
+        float biais = readfloat(&stream);
+
+        for(int i = 0; i < nbWeights; i++)
+            weights[i] = readfloat(&stream);
+        
+        network->neurons[neuronIndex] = buildNeuron(biais, nbWeights, weights);
+        neuronIndex++;
+    }    
+
+    return network;
+}
+
 // Tools ---------------------------------------------------------------------------------------------------------------
 
 void destroyNetwork(Network* network) {
-    free((*network).layerLengths);
-    free((*network).firstNeuronIndices);
     int totalNeurons = getTotalNeurons(network);
     for(int i = 0; i < totalNeurons; i++)
         destroyNeuron((*network).neurons[i]);
+    free((*network).layerLengths);
+    free((*network).firstNeuronIndices);
     free(network);
 }
 

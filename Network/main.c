@@ -40,6 +40,25 @@ float xor_cost(Network* network) {
     return res;
 }
 
+void learn_xor(Network* network) {
+
+    float i1[] = {0,0};
+    float i2[] = {0,1};
+    float i3[] = {1,0};
+    float i4[] = {1,1};
+    float l1[] = {0};
+    float l2[] = {1};
+    float l3[] = {1};
+    float l4[] = {0};
+    TrainingExample** examples = malloc(sizeof(TrainingExample*)*4);
+    examples[0] = newTrainingExample(i1, l1);
+    examples[1] = newTrainingExample(i2, l2);
+    examples[2] = newTrainingExample(i3, l3);
+    examples[3] = newTrainingExample(i4, l4);
+
+    learn(network, 1.0f, examples, 4);
+}
+
 int main() {
 
     //Initialises the rand() function to generate random numbers
@@ -47,15 +66,18 @@ int main() {
 
     int layers[] = {2,2,2,1};
     Network* network = NULL;
-    do {
-        if(network != NULL) destroyNetwork(network);
-        network = newNetwork(layers, 4);
-    } while(xor_cost(network) > 0.1f);
+    network = newNetwork(layers, 4);
+    xor(network);
+    printf("Cost: %f\n\n", xor_cost(network));
 
-    printf("%s\n", serialize(network));
+    printf("Learning...\n\n");
+    for(int i = 0; i < 100000; i++)
+        learn_xor(network);
 
     xor(network);
-    printf("Cost: %f", xor_cost(network));
+    printf("Cost: %f\n", xor_cost(network));
+    printf("\n");
+    printf("%s\n", serializeNetwork(network));
 
     return 0;
 }

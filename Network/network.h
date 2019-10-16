@@ -1,10 +1,12 @@
 #ifndef TESTS_NETWORK_H
 #define TESTS_NETWORK_H
 
-#include "neuron.h" //TODO: Voir si c'est vraiment necessaire
+#include "neuron.h"
+#include "training_example.h"
 
-typedef struct Network Network;
-struct Network {
+//TODO: Enlever la declaration de struct + include neuron
+
+typedef struct {
     //All the neurons of the network. The layers are stored one after the other
     //The input layer doesn't contain any neuron because it's just the input values
     Neuron** neurons;
@@ -17,15 +19,18 @@ struct Network {
     int* layerLengths;
     //The number of layers (inputs included. ex: inputs - hidden - hidden - outputs => 4)
     int nbLayers;
-};
+} Network;
 
 Network* newNetwork(int* layerLengths, int nbLayers);
 
 float* getNetworkAnswer(Network* network, float* inputs);
 
 float* cost(Network* network, int nbExamples, float** inputs, float** labels);
+void learn(Network* network, float eta, TrainingExample** examples, int nbExamples);
+void getCostGradient(Network* network, TrainingExample* example, float** deltaW, float* deltaB);
 
-char* serialize(Network* network);
+char* serializeNetwork(Network* network);
+Network* parseNetwork(char* data);
 
 void destroyNetwork(Network* network);
 int getLayerLength(Network* network, int layerIndex);
